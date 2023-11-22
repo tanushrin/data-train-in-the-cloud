@@ -69,6 +69,8 @@ def train_model(
         restore_best_weights=True,
         verbose=1
     )
+    # ensure that X is of type float32
+    #X = X.astype(np.float32)
 
     history = model.fit(
         X,

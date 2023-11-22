@@ -6,6 +6,7 @@ from pathlib import Path
 
 from taxifare.params import *
 
+
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean raw data by
@@ -16,11 +17,17 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.astype(DTYPES_RAW)
 
     # Remove buggy transactions
-    df = df.drop_duplicates()  # TODO: handle whether data is consumed in chunks directly in the data source
-    df = df.dropna(how='any', axis=0)
+    df = (
+        df.drop_duplicates()
+    )  # TODO: handle whether data is consumed in chunks directly in the data source
+    df = df.dropna(how="any", axis=0)
 
-    df = df[(df.dropoff_latitude != 0) | (df.dropoff_longitude != 0) |
-                    (df.pickup_latitude != 0) | (df.pickup_longitude != 0)]
+    df = df[
+        (df.dropoff_latitude != 0)
+        | (df.dropoff_longitude != 0)
+        | (df.pickup_latitude != 0)
+        | (df.pickup_longitude != 0)
+    ]
 
     df = df[df.passenger_count > 0]
     df = df[df.fare_amount > 0]
@@ -38,22 +45,21 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 def get_data_with_cache(
-        gcp_project:str,
-        query:str,
-        cache_path:Path,
-        data_has_header=True
-    ) -> pd.DataFrame:
+    gcp_project: str, query: str, cache_path: Path, data_has_header=True
+) -> pd.DataFrame:
     """
     Retrieve `query` data from BigQuery, or from `cache_path` if the file exists
     Store at `cache_path` if retrieved from BigQuery for future use
     """
     if cache_path.is_file():
         print(Fore.BLUE + "\nLoad data from local CSV..." + Style.RESET_ALL)
-        df = pd.read_csv(cache_path, header='infer' if data_has_header else None)
+        df = pd.read_csv(cache_path, header="infer" if data_has_header else None)
     else:
         print(Fore.BLUE + "\nLoad data from BigQuery server..." + Style.RESET_ALL)
         client = bigquery.Client(project=gcp_project)
+        print(query)
         query_job = client.query(query)
         result = query_job.result()
         df = result.to_dataframe()
@@ -66,13 +72,10 @@ def get_data_with_cache(
 
     return df
 
+
 def load_data_to_bq(
-        data: pd.DataFrame,
-        gcp_project:str,
-        bq_dataset:str,
-        table: str,
-        truncate: bool
-    ) -> None:
+    data: pd.DataFrame, gcp_project: str, bq_dataset: str, table: str, truncate: bool
+) -> None:
     """
     - Save the DataFrame to BigQuery
     - Empty the table beforehand if `truncate` is True, append otherwise
@@ -80,15 +83,37 @@ def load_data_to_bq(
 
     assert isinstance(data, pd.DataFrame)
     full_table_name = f"{gcp_project}.{bq_dataset}.{table}"
-    print(Fore.BLUE + f"\nSave data to BigQuery @ {full_table_name}...:" + Style.RESET_ALL)
-
-    # Load data onto full_table_name
+    print(
+        Fore.BLUE + f"\nSave data to BigQuery @ {full_table_name}...:" + Style.RESET_ALL
+    )
 
     # 🎯 HINT for "*** TypeError: expected bytes, int found":
     # After preprocessing the data, your original column names are gone (print it to check),
-    # so ensure that your column names are *strings* that start with either 
+    # so ensure that your column names are *strings* that start with either
     # a *letter* or an *underscore*, as BQ does not accept anything else
 
-    pass  # YOUR CODE HERE
+    # pass  # YOUR CODE HERE
+    # Print to check column names
+    print(data.columns)
+
+    # Save the DataFrame to BigQuery and
+    # empty the table beforehand if `truncate` is True, append otherwise
+    data.columns = [
+        f"_{column}"
+        if not str(column)[0].isalpha() and not str(column)[0] == "_"
+        else str(column)
+        for column in data.columns
+    ]
+    client = bigquery.Client()
+    # Define write mode and schema
+    write_mode = "WRITE_TRUNCATE" if truncate else "WRITE_APPEND"
+    job_config = bigquery.LoadJobConfig(write_disposition=write_mode)
+    print(
+        f"\n{'Write' if truncate else 'Append'} {full_table_name} ({data.shape[0]} rows)"
+    )
+    # Load data
+    print("After changing column names:\n", data.columns)
+    job = client.load_table_from_dataframe(data, full_table_name, job_config=job_config)
+    result = job.result()
 
     print(f"✅ Data saved to bigquery, with shape {data.shape}")
